@@ -7,7 +7,7 @@
 #define PLUGIN_NEV	"Scoreboard Custom Levels"
 #define PLUGIN_LERIAS	"(9_9)"
 #define PLUGIN_AUTHOR	"Nexd"
-#define PLUGIN_VERSION	"1.0"
+#define PLUGIN_VERSION	"1.1"
 #define PLUGIN_URL	"https://github.com/KillStr3aK"
 #define MAX_ICONS 128
 #pragma tabsize 0
@@ -45,6 +45,21 @@ public Plugin myinfo =
 	version = PLUGIN_VERSION,
 	url = PLUGIN_URL
 };
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+	RegPluginLibrary("ScoreboardCustomLevels");
+	CreateNative("SCL_GetLevel", Native_GetLevel);
+	
+	return APLRes_Success;
+}
+
+public Native_GetLevel(Handle:plugin, params)
+{
+	int client = GetNativeCell(1);
+	
+	return m_iLevel[client];
+}
 
 public void OnPluginStart()
 {
