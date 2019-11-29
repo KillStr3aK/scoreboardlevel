@@ -202,7 +202,7 @@ public void OnThinkPost(int m_iEntity)
 
 	for(int i = 1; i <= MaxClients; i++)
 	{
-		if(m_iLevel[i] != -1)
+		if(m_iLevel[i] > 0)
 		{
 			if(m_iLevel[i] != m_iLevelTemp[i]) SetEntData(m_iEntity, m_iOffset + (i * 4), m_iLevel[i]);
 		}
