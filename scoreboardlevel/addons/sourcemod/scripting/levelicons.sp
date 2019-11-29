@@ -7,7 +7,7 @@
 #define PLUGIN_NEV	"Scoreboard Custom Levels"
 #define PLUGIN_LERIAS	"(9_9)"
 #define PLUGIN_AUTHOR	"Nexd"
-#define PLUGIN_VERSION	"1.1"
+#define PLUGIN_VERSION	"1.1.1"
 #define PLUGIN_URL	"https://github.com/KillStr3aK"
 #define MAX_ICONS 128
 #pragma tabsize 0
@@ -108,7 +108,7 @@ public void IconMenu(Jatekos jatekos)
 	char m_cMenuLine[128];
 
 	Menu menu = CreateMenu(IconList);
-	menu.SetTitle("Level Icons - %s:%s\n%s", PLUGIN_AUTHOR, PLUGIN_VERSION, PLUGIN_URL);
+	menu.SetTitle("Level Icons");
 	if(m_iLevel[jatekos.index] != -1) menu.AddItem("clear", "Clear");
 	else menu.AddItem("", "Clear", ITEMDRAW_DISABLED);
 	menu.AddItem("", "", ITEMDRAW_SPACER);
@@ -202,7 +202,7 @@ public void OnThinkPost(int m_iEntity)
 
 	for(int i = 1; i <= MaxClients; i++)
 	{
-		if(m_iLevel[i] != -1)
+		if(m_iLevel[i] > 0)
 		{
 			if(m_iLevel[i] != m_iLevelTemp[i]) SetEntData(m_iEntity, m_iOffset + (i * 4), m_iLevel[i]);
 		}
