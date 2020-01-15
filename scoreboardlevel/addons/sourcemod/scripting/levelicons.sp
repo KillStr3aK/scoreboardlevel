@@ -144,7 +144,7 @@ public int IconList(Menu menu, MenuAction mAction, int client, int item)
 		}
 
 		IconMenu(Jatekos(client));
-	}
+	} else if(mAction == MenuAction_End) delete menu;
 }
 
 public void LevelIconReset() 
@@ -191,7 +191,7 @@ public void OnMapStart()
     for(int i = 0; i < g_iLevelIcons; ++i)
 	{
 		FormatEx(sBuffer, sizeof(sBuffer), "materials/panorama/images/icons/xp/level%i.png", g_eLevelIcons[i][IconIndex]);
-    	AddFileToDownloadsTable(sBuffer);
+		AddFileToDownloadsTable(sBuffer);
 	}
 }
 
