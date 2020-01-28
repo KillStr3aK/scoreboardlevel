@@ -54,11 +54,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	return APLRes_Success;
 }
 
-public Native_GetLevel(Handle:plugin, params)
+public Native_GetLevel(Handle plugin, int params)
 {
-	int client = GetNativeCell(1);
-	
-	return m_iLevel[client];
+	return m_iLevel[GetNativeCell(1)];
 }
 
 public void OnPluginStart()
@@ -205,7 +203,7 @@ public void OnThinkPost(int m_iEntity)
 		if(m_iLevel[i] > 0)
 		{
 			if(m_iLevel[i] != m_iLevelTemp[i]) SetEntData(m_iEntity, m_iOffset + (i * 4), m_iLevel[i]);
-		}
+		} else SetEntData(m_iEntity, m_iOffset + (i * 4), -1);
 	}
 }
 
