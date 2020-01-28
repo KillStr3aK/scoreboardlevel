@@ -2,19 +2,28 @@
   #endinput 
 #endif 
 #define _nexd_included_
-//#define PREFIX "\x01[\x0BRendszer\x01]" //Used for my things, change it if you want
+#define PREFIX "\x01[\x0BRendszer\x01]" //Used for my things, change it if you want
 #define empty "\0"
 #define m_iMaxVelocity 9999999.0
 #define MAX_WEAPONS 48
 #define INTEGER_STRING_LENGTH 20
 #define GAMEUNITS_TO_METERS 0.01905
 #define LoopValidClients(%1) for(int %1 = 1; %1 <= MaxClients; %1++) if(IsValidClient(%1))
-
+#define EF_BONEMERGE                (1 << 0)
+#define EF_NOSHADOW                 (1 << 4)
+#define EF_NORECEIVESHADOW          (1 << 6)
+#define EPOOL "ABCDEFGHIJKLMNOPQRSTXYZVW"
 
 #include <clients>
 #include <sdktools>
 #include <cstrike>
 #include <clientprefs>
+#undef REQUIRE_PLUGIN
+#include <crypt>
+#include <progressbar>
+#define REQUIRE_PLUGIN
+
+#pragma tabsize 0;
 
 stock float[] GetConVar2DVector(ConVar convar)
 {
@@ -43,6 +52,7 @@ stock float FloatDivider(float value, float multiplier)
 stock float GetEntitiesDistance(int entity1, int entity2)
 {
 	if(!IsValidEntity(entity1) || !IsValidEntity(entity2)) return 100.0;
+	if(!HasEntProp(entity1, Prop_Send, "m_vecOrigin") || !HasEntProp(entity2, Prop_Send, "m_vecOrigin")) return 100.0;
 	
 	float fOrigin1[3];
 	GetEntPropVector(entity1, Prop_Send, "m_vecOrigin", fOrigin1);
@@ -97,6 +107,42 @@ stock void RemovePlayerKnife(int client) {
 	}
 }
 
+stock void RemoveAllWeapon(int client) {
+    int fegya;
+    for (int i = 0; i < 6; i++)
+    {
+		fegya = GetPlayerWeaponSlot(client, i);
+		if(IsValidEntity(fegya))
+		{
+			RemovePlayerItem(client, fegya);
+		}
+	}
+}
+
+stock void RemovePlayerPistol(int client) {
+    int fegya;
+    for (int i = 0; i < 6; i++)
+    {
+		fegya = GetPlayerWeaponSlot(client, i);
+		if(IsValidEntity(fegya) && i == 1)
+		{
+			RemovePlayerItem(client, fegya);
+		}
+	}
+}
+
+stock void RemovePlayerPrimary(int client) {
+    int fegya;
+    for (int i = 0; i < 6; i++)
+    {
+		fegya = GetPlayerWeaponSlot(client, i);
+		if(IsValidEntity(fegya) && i == 0)
+		{
+			RemovePlayerItem(client, fegya);
+		}
+	}
+}
+
 stock GetLegacyAuthString(int client, char[] out, int maxlen, bool validate = true)
 {
 	char m_szSteamID[32];
@@ -114,7 +160,7 @@ stock GetLegacyAuthString(int client, char[] out, int maxlen, bool validate = tr
 	return success;
 }
 
-stock bool IsInteger(char[] buffer)
+stock bool IsInteger(const char[] buffer)
 {
     for (int i = 0; i < strlen(buffer); i++)
     {
@@ -123,6 +169,13 @@ stock bool IsInteger(char[] buffer)
     }
 
     return true;    
+}
+
+stock char IntToStr(int thing)
+{
+	char itemindex[10];
+	IntToString(thing, itemindex, sizeof(itemindex));
+	return itemindex;
 }
 
 stock bool HasWeapon(int client, const char[] className)
@@ -151,14 +204,35 @@ stock Client_GetWeapon(int client, const char[] className)
 	return INVALID_ENT_REFERENCE;
 }
 
-stock Weapon_GetPrimaryAmmoType(int weapon)
+stock int Weapon_GetPrimaryAmmoType(int weapon)
 {
 	return GetEntProp(weapon, Prop_Data, "m_iPrimaryAmmoType");
 }
 
-stock Weapon_GetSecondaryAmmoType(int weapon)
+stock int Weapon_GetSecondaryAmmoType(int weapon)
 {
 	return GetEntProp(weapon, Prop_Data, "m_iSecondaryAmmoType");
+}
+
+stock void DisablePlugin(char[] pluginname)
+{
+	char sPath[64];
+	BuildPath(Path_SM, sPath, sizeof(sPath), "plugins/%s.smx", pluginname);
+	if (FileExists(sPath))
+	{
+		char sNewPath[64];
+		BuildPath(Path_SM, sNewPath, sizeof(sNewPath), "plugins/disabled/%s.smx", pluginname);
+
+		ServerCommand("sm plugins unload %s", pluginname);
+
+		if(FileExists(sNewPath))
+		{
+			DeleteFile(sNewPath);
+		}
+		RenameFile(sNewPath, sPath);
+
+		LogMessage("%s was unloaded and moved to %s to avoid conflicts", sPath, sNewPath);
+	}
 }
 
 stock bool Entity_IsPlayer(int entity)
@@ -183,7 +257,6 @@ stock int GetEventVictim(Event event)
 stock bool Entity_Kill(kenny, killChildren=false)
 {
 	if (Entity_IsPlayer(kenny)) {
-		// Oh My God! They Killed Kenny!!
 		ForcePlayerSuicide(kenny);
 		return true;
 	}
@@ -259,7 +332,7 @@ stock Weapon_IsValid(int weapon)
 	return Entity_ClassNameMatches(weapon, "weapon_", true);
 }
 
-stock Client_GetWeaponsOffset(int client)
+stock int Client_GetWeaponsOffset(int client)
 {
 	static offset = -1;
 
@@ -268,6 +341,46 @@ stock Client_GetWeaponsOffset(int client)
 	}
 
 	return offset;
+}
+
+stock int Client_GetActiveWeaponName(int client, char[] buffer, int size)
+{
+	new weapon = Client_GetActiveWeapon(client);
+	
+	if (weapon == INVALID_ENT_REFERENCE) {
+		buffer[0] = '\0';
+		return INVALID_ENT_REFERENCE;
+	}
+	
+	Entity_GetClassName(weapon, buffer, size);
+	
+	return weapon;
+}
+
+stock bool Weapon_IsReloading(int weapon)
+{
+	return view_as<bool>(GetEntProp(weapon, Prop_Data, "m_bInReload"));
+}
+
+stock Entity_IsValid(int entity)
+{
+	return IsValidEntity(entity);
+}
+
+stock Client_GetActiveWeapon(int client)
+{
+	new weapon =  GetEntPropEnt(client, Prop_Data, "m_hActiveWeapon");
+	
+	if (!Entity_IsValid(weapon)) {
+		return INVALID_ENT_REFERENCE;
+	}
+	
+	return weapon;
+}
+
+stock Weapon_GetOwner(int weapon)
+{
+	return GetEntPropEnt(weapon, Prop_Data, "m_hOwner");
 }
 
 stock bool Entity_ClassNameMatches(int entity, const char[] className, bool partialMatch = false)
@@ -324,12 +437,49 @@ stock int GetAliveClientFromTeam(int team)
 	return 0;
 }
 
+stock bool HasAccess(int client, int flag, bool command = true)
+{
+	return (CheckCommandAccess(client, "dummytext", flag, command));
+}
+
+stock bool IsSilenced(int wix)
+{
+	return view_as<bool>(GetEntProp(wix, Prop_Send, "m_bSilencerOn"));
+}
+
+stock int GetBotFromTeam(int team)
+{
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if(IsClientConnected(i) && IsClientInGame(i) && IsPlayerAlive(i) && IsFakeClient(i) && GetClientTeam(i) == team)
+		{
+			return i;
+		}
+	}
+
+	return 0;
+}
+
+stock int GetBotCountTeam(int team)
+{
+	int count = 0;
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if(IsClientConnected(i) && IsClientInGame(i) && IsPlayerAlive(i) && IsFakeClient(i) && GetClientTeam(i) == team)
+		{
+			count++;
+		}
+	}
+
+	return count;
+}
+
 stock int GetAliveClientsCountTeam(int team)
 {
 	int j = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if(IsClientInGame(i) && GetClientTeam(i) == team && IsPlayerAlive(i) && !IsFakeClient(i))
+		if(IsClientConnected(i) && IsClientInGame(i) && GetClientTeam(i) == team && IsPlayerAlive(i) && !IsFakeClient(i))
 		{
 			j++;
 		}
@@ -342,7 +492,7 @@ stock int GetClientsCountTeam(int team)
 	int j = 0;
 	for (int i = 1; i <= MaxClients; i++)
 	{
-		if(IsClientInGame(i) && GetClientTeam(i) == team)
+		if(IsValidClient(i) && GetClientTeam(i) == team)
 		{
 			j++;
 		}
@@ -376,11 +526,89 @@ stock int NGetClientsCount()
 	return j;
 }
 
+stock int GetRealClientCount()
+{
+	int count = 0;
+	for (int i = 1; i <= MaxClients; i++)
+	{
+		if(IsValidClient(i)) count++;
+	}
+
+	return count;
+}
+
+stock char GetCvarString(ConVar cvar)
+{
+	char string[255];
+	cvar.GetString(string, sizeof(string));
+	return string;
+}
+
+stock int Client_GetMoney(int client)
+{
+	return GetEntProp(client, Prop_Send, "m_iAccount");
+}
+
+stock void Client_SetMoney(int client, int value)
+{
+	SetEntProp(client, Prop_Send, "m_iAccount", value);
+}
+
+/**
+ * Returns the round count.
+ *
+ * @return Round count.
+ */
+stock int GetRoundCount()
+{
+	return GameRules_GetProp("m_totalRoundsPlayed");
+}
+
+/**
+ * Warmup check
+ *
+ * @return True if warmup, false otherwise
+ */
 stock bool IsWarmup()
 {
 	return view_as<bool>(GameRules_GetProp("m_bWarmupPeriod"));
 }
 
+/**
+ * Freezetime check
+ *
+ * @return True if freezetime, false otherwise
+ */
+stock bool IsFreezeTime()
+{
+	return view_as<bool>(GameRules_GetProp("m_bFreezePeriod"));
+}
+
+/**
+ * Bomb planted check
+ *
+ * @return True if planted, false otherwise
+ */
+stock bool IsBombPlanted()
+{
+	return view_as<bool>(GameRules_GetProp("m_bBombPlanted"));
+}
+
+/**
+ * Bomb dropped check
+ *
+ * @return True if dropped, false otherwise
+ */
+stock bool IsBombDropped()
+{
+	return view_as<bool>(GameRules_GetProp("m_bBombDropped"));
+}
+
+/**
+ * Returns a random player
+ *
+ * @return Random valid client index.
+ */
 stock int GetRandomPlayer()
 {
 	int[] jatekosok = new int[MaxClients+1];
@@ -470,27 +698,292 @@ stock bool GetCookieBool(int client, Handle cookie, bool defaultValue = false) {
 	return GetCookieInt(client, cookie, defaultValue) != 0;
 }
 
-stock bool IsKnife(char[] knifename)
+stock char IntVersionToString(int version)
 {
-	if(StrEqual(knifename, "weapon_knife") || 
-    	StrEqual(knifename, "weapon_bayonet") || 
-    	StrEqual(knifename, "weapon_knife_flip") || 
-    	StrEqual(knifename, "weapon_knife_gut") || 
-    	StrEqual(knifename, "weapon_knife_karambit") || 
-    	StrEqual(knifename, "weapon_knife_m9_bayonet") || 
-    	StrEqual(knifename, "weapon_knife_tactical") || 
-    	StrEqual(knifename, "weapon_knife_push") || 
-    	StrEqual(knifename, "weapon_knife_butterfly") || 
-    	StrEqual(knifename, "weapon_knife_falchion") || 
-    	StrEqual(knifename, "weapon_knife_survival_bowie") || 
-    	StrEqual(knifename, "weapon_knife_ursus") || 
-    	StrEqual(knifename, "weapon_knife_gypsy_jackknife") || 
-    	StrEqual(knifename, "weapon_knife_stiletto"))
-    	return true;
+	char verStr[16];
+	Format(verStr, sizeof(verStr), "%i", version);
+	ReplaceString(verStr, sizeof(verStr), "0", ".");
+	return verStr;
+}
+
+stock bool DrawLaser(char[] name, float startX, float startY, float startZ, float endX, float endY, float endZ, char[] color)
+{
+    int index = CreateEntityByName("env_beam");
+
+    if (index != -1)
+    {
+        float start[3];
+        start[0] = startX;
+        start[1] = startY;
+        start[2] = startZ;
+
+        float end[3];
+        end[0] = endX;
+        end[1] = endY;
+        end[2] = endZ;
+
+        if (!IsModelPrecached("materials/sprites/laserbeam.vmt")) PrecacheModel("materials/sprites/laserbeam.vmt");
+
+        DispatchKeyValue(index, "targetname", name);
+        DispatchKeyValue(index, "spawnflags", "1");
+        DispatchKeyValue(index, "texture", "sprites/laserbeam.spr");
+        DispatchKeyValue(index, "life", "0");
+        DispatchKeyValue(index, "BoltWidth", "2.5");
+        DispatchKeyValue(index, "rendercolor", color);
+        DispatchKeyValue(index, "renderamt", "255");
+        SetEntityModel(index, "sprites/laserbeam.vmt");
+        TeleportEntity(index, start, NULL_VECTOR, NULL_VECTOR);
+        DispatchSpawn(index);
+        SetEntPropVector(index, Prop_Data, "m_vecEndPos", end);
+        AcceptEntityInput(index, "TurnOn");
+
+        return true;
+    }
 
     return false;
 }
 
+stock char GetRandomChar(const char[] pool)
+{
+	char sPool[255];
+	Format(sPool, sizeof(sPool), pool);
+	return sPool[GetRandomInt(0, strlen(pool)-1)];
+}
+
+/**
+ * Knife check
+ *
+ * @param knifename classname
+ * @return True if knife, false otherwise
+ */
+stock bool IsThisKnife(char[] knifename)
+{
+	if(IsStrContains(knifename, "knife") || 
+    	IsStrContains(knifename, "bayonet"))
+    	return true;
+
+	return false;
+}
+
+stock bool IsSMG(char[] weapon)
+{
+	return (IsStrContains(weapon, "mp9") ||
+			IsStrContains(weapon, "p90") ||
+			IsStrContains(weapon, "mac10") ||
+			IsStrContains(weapon, "ump45") ||
+			IsStrContains(weapon, "mp7") ||
+			IsStrContains(weapon, "mp5sd") ||
+			IsStrContains(weapon, "bizon"))
+}
+
+stock bool IsHeavy(char[] weapon)
+{
+	return (IsStrContains(weapon, "nova") ||
+			IsStrContains(weapon, "xm1014") ||
+			IsStrContains(weapon, "mag7") ||
+			IsStrContains(weapon, "negev") ||
+			IsStrContains(weapon, "sawedoff"))
+}
+
+stock bool IsPistol(char[] weapon)
+{
+	return (IsStrContains(weapon, "deagle") ||
+			IsStrContains(weapon, "usp_silencer") ||
+			IsStrContains(weapon, "hkp2000") ||
+			IsStrContains(weapon, "glock") ||
+			IsStrContains(weapon, "elite") ||
+			IsStrContains(weapon, "p250") ||
+			IsStrContains(weapon, "cz75a") ||
+			IsStrContains(weapon, "fiveseven") ||
+			IsStrContains(weapon, "tec9") ||
+			IsStrContains(weapon, "revolver"))
+}
+
+stock bool IsRifle(char[] weapon)
+{
+	return (IsStrContains(weapon, "awp") ||
+			IsStrContains(weapon, "ak47") ||
+			IsStrContains(weapon, "m4a1") ||
+			IsStrContains(weapon, "famas") ||
+			IsStrContains(weapon, "galilar") ||
+			IsStrContains(weapon, "ssg08") ||
+			IsStrContains(weapon, "sg556") ||
+			IsStrContains(weapon, "aug") ||
+			IsStrContains(weapon, "scar20") ||
+			IsStrContains(weapon, "g3sg1"))
+}
+
+stock char GetWeaponNameFromClass(char[] class)
+{
+	char name[32];
+	if(StrEqual(class, "weapon_awp")) Format(name, sizeof(name), "AWP");
+	else if(StrEqual(class, "weapon_ak47")) Format(name, sizeof(name), "AK-47");
+	else if(StrEqual(class, "weapon_m4a1")) Format(name, sizeof(name), "M4A4");
+	else if(StrEqual(class, "weapon_m4a1_silencer")) Format(name, sizeof(name), "M4A1-S");
+	else if(StrEqual(class, "weapon_deagle")) Format(name, sizeof(name), "Desert Eagle");
+	else if(StrEqual(class, "weapon_usp_silencer")) Format(name, sizeof(name), "USP-S");
+	else if(StrEqual(class, "weapon_hkp2000")) Format(name, sizeof(name), "HKP-2000");
+	else if(StrEqual(class, "weapon_glock")) Format(name, sizeof(name), "Glock-18");
+	else if(StrEqual(class, "weapon_elite")) Format(name, sizeof(name), "Dual Berettas");
+	else if(StrEqual(class, "weapon_p250")) Format(name, sizeof(name), "P250");
+	else if(StrEqual(class, "weapon_cz75a")) Format(name, sizeof(name), "CZ75-Auto");
+	else if(StrEqual(class, "weapon_fiveseven")) Format(name, sizeof(name), "Five-SeveN");
+	else if(StrEqual(class, "weapon_tec9")) Format(name, sizeof(name), "Tec-9");
+	else if(StrEqual(class, "weapon_revolver")) Format(name, sizeof(name), "R8 Revolver");
+	else if(StrEqual(class, "weapon_nova")) Format(name, sizeof(name), "Nova");
+	else if(StrEqual(class, "weapon_xm1014")) Format(name, sizeof(name), "XM1014");
+	else if(StrEqual(class, "weapon_mag7")) Format(name, sizeof(name), "MAG-7");
+	else if(StrEqual(class, "weapon_sawedoff")) Format(name, sizeof(name), "Sawed-Off");
+	else if(StrEqual(class, "weapon_m249")) Format(name, sizeof(name), "M429");
+	else if(StrEqual(class, "weapon_negev")) Format(name, sizeof(name), "Negev");
+	else if(StrEqual(class, "weapon_mp9")) Format(name, sizeof(name), "MP9");
+	else if(StrEqual(class, "weapon_mac10")) Format(name, sizeof(name), "MAC-10");
+	else if(StrEqual(class, "weapon_mp7")) Format(name, sizeof(name), "MP7");
+	else if(StrEqual(class, "weapon_ump45")) Format(name, sizeof(name), "UMP-45");
+	else if(StrEqual(class, "weapon_p90")) Format(name, sizeof(name), "P90");
+	else if(StrEqual(class, "weapon_bizon")) Format(name, sizeof(name), "PP-Bizon");
+	else if(StrEqual(class, "weapon_famas")) Format(name, sizeof(name), "FAMAS");
+	else if(StrEqual(class, "weapon_galilar")) Format(name, sizeof(name), "Galil AR");
+	else if(StrEqual(class, "weapon_ssg08")) Format(name, sizeof(name), "SSG 08");
+	else if(StrEqual(class, "weapon_sg556")) Format(name, sizeof(name), "SG 553");
+	else if(StrEqual(class, "weapon_aug")) Format(name, sizeof(name), "AUG");
+	else if(StrEqual(class, "weapon_scar20")) Format(name, sizeof(name), "SCAR-20");
+	else if(StrEqual(class, "weapon_g3sg1")) Format(name, sizeof(name), "G3SG1");
+	else if(StrEqual(class, "weapon_knife_karambit")) Format(name, sizeof(name), "★ Karambit");
+	else if(StrEqual(class, "weapon_knife_m9_bayonet")) Format(name, sizeof(name), "★ M9 Bayonet");
+	else if(StrEqual(class, "weapon_bayonet")) Format(name, sizeof(name), "★ Bayonet");
+	else if(StrEqual(class, "weapon_knife_survival_bowie")) Format(name, sizeof(name), "★ Bowie Knife");
+	else if(StrEqual(class, "weapon_knife_butterfly")) Format(name, sizeof(name), "★ Butterfly Knife");
+	else if(StrEqual(class, "weapon_knife_flip")) Format(name, sizeof(name), "★ Flip Knife");
+	else if(StrEqual(class, "weapon_knife_push")) Format(name, sizeof(name), "★ Shadow Daggers");
+	else if(StrEqual(class, "weapon_knife_tactical")) Format(name, sizeof(name), "★ Huntsman Knife");
+	else if(StrEqual(class, "weapon_knife_falchion")) Format(name, sizeof(name), "★ Falchion Knife");
+	else if(StrEqual(class, "weapon_knife_gut")) Format(name, sizeof(name), "★ Gut Knife");
+	else if(StrEqual(class, "weapon_knife_ursus")) Format(name, sizeof(name), "★ Ursus Knife");
+	else if(StrEqual(class, "weapon_knife_gypsy_jackknife")) Format(name, sizeof(name), "★ Navaja Knife");
+	else if(StrEqual(class, "weapon_knife_stiletto")) Format(name, sizeof(name), "★ Stiletto Knife");
+	else if(StrEqual(class, "weapon_knife_widowmaker")) Format(name, sizeof(name), "★ Talon Knife");
+	else if(StrEqual(class, "weapon_mp5sd")) Format(name, sizeof(name), "MP5-SD");
+	else if(StrEqual(class, "weapon_knife_css")) Format(name, sizeof(name), "★ Classic Knife");
+	else if(StrEqual(class, "weapon_knife_cord")) Format(name, sizeof(name), "★ Paracord Knife");
+	else if(StrEqual(class, "weapon_knife_canis")) Format(name, sizeof(name), "★ Survival Knife");
+	else if(StrEqual(class, "weapon_knife_outdoor")) Format(name, sizeof(name), "★ Nomad Knife");
+	else if(StrEqual(class, "weapon_knife_skeleton")) Format(name, sizeof(name), "★ Skeleton Knife");
+	else Format(name, sizeof(name), "Unknown");
+	return name;
+}
+
+stock char GetServerAdress()
+{
+	char address[35];
+	char port[5];
+	FindConVar("hostport").GetString(port, sizeof(port));
+
+	char pieces[4];
+	int longip = GetConVarInt(FindConVar("hostip"));
+	
+	pieces[0] = (longip >> 24) & 0x000000FF;
+	pieces[1] = (longip >> 16) & 0x000000FF;
+	pieces[2] = (longip >> 8) & 0x000000FF;
+	pieces[3] = longip & 0x000000FF;
+
+	Format(address, sizeof(address), "%d.%d.%d.%d:%s", pieces[0], pieces[1], pieces[2], pieces[3], port);
+	return address;
+}
+
+stock void RemoveWeaponPrefix(const char[] source, char[] output, int size)
+{
+	strcopy(output, size, source[7]);
+}
+
+stock char GetCurrentGameMode()
+{
+	char mapname[64];
+	GetCurrentMap(mapname, sizeof(mapname));
+	return GetGameMode(mapname);
+}
+
+stock char GetGameMode(char[] map)
+{
+	char gamemode[32];
+	if(IsStrContains(map, "mg_")) Format(gamemode, sizeof(gamemode), "MG");
+	else if(IsStrContains(map, "bb_")) Format(gamemode, sizeof(gamemode), "BB");
+	else if(IsStrContains(map, "awp_")) Format(gamemode, sizeof(gamemode), "AWP");
+	else if(IsStrContains(map, "de_")) Format(gamemode, sizeof(gamemode), "PUB");
+	else if(IsStrContains(map, "deathrun_")) Format(gamemode, sizeof(gamemode), "DR");
+	else if(IsStrContains(map, "ox_")) Format(gamemode, sizeof(gamemode), "OX");
+	else if(IsStrContains(map, "boss_")) Format(gamemode, sizeof(gamemode), "BOSS");
+	else if(IsStrContains(map, "zm_")) Format(gamemode, sizeof(gamemode), "ZM");
+	else if(IsStrContains(map, "ze_")) Format(gamemode, sizeof(gamemode), "ZE");
+	else if(IsStrContains(map, "ttt_")) Format(gamemode, sizeof(gamemode), "TTT");
+	else if(IsStrContains(map, "35hp_")) Format(gamemode, sizeof(gamemode), "35HP");
+	else if(IsStrContains(map, "surf_")) Format(gamemode, sizeof(gamemode), "SURF");
+	else if(IsStrContains(map, "jb_")) Format(gamemode, sizeof(gamemode), "JB");
+	else Format(gamemode, sizeof(gamemode), "UNKNOWN");
+	return gamemode;
+}
+
+stock int GetKnifeDefIndex(char[] classname)
+{
+	if(StrEqual(classname, "weapon_knife_cord")) return 49;
+	else if(StrEqual(classname, "weapon_knife_canis")) return 50;
+	else if(StrEqual(classname, "weapon_knife_outdoor")) return 51;
+	else if(StrEqual(classname, "weapon_knife_skeleton")) return 52;
+	else if(StrEqual(classname, "weapon_knife_css")) return 48;
+	else if(StrEqual(classname, "weapon_knife_ursus")) return 43;
+	else if(StrEqual(classname, "weapon_knife_gypsy_jackknife")) return 44;
+	else if(StrEqual(classname, "weapon_knife_stiletto")) return 45;
+	else if(StrEqual(classname, "weapon_knife_widowmaker")) return 46;
+	else if(StrEqual(classname, "weapon_knife_karambit")) return 33;
+	else if(StrEqual(classname, "weapon_knife_m9_bayonet")) return 34;
+	else if(StrEqual(classname, "weapon_bayonet")) return 35;
+	else if(StrEqual(classname, "weapon_knife_survival_bowie")) return 36;
+	else if(StrEqual(classname, "weapon_knife_butterfly")) return 37;
+	else if(StrEqual(classname, "weapon_knife_flip")) return 38;
+	else if(StrEqual(classname, "weapon_knife_push")) return 39;
+	else if(StrEqual(classname, "weapon_knife_tactical")) return 40;
+	else if(StrEqual(classname, "weapon_knife_falchion")) return 41;
+	else if(StrEqual(classname, "weapon_knife_gut")) return 42;
+	else return -1;
+}
+
+/**
+ * Replaces the color codes in a string.
+ *
+ * @param szoveg	string
+ * @return string with replaced colorcodes.
+ */
+stock char ReplaceColors(char[] szoveg, bool clear = false)
+{
+	char cSzoveg[255];
+	Format(cSzoveg, sizeof(cSzoveg), szoveg);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{red}", clear?"":"\x07", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{lightred}", clear?"":"\x0F", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{darkred}", clear?"":"\x02", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{bluegrey}", clear?"":"\x0A", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{blue}", clear?"":"\x0B", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{darkblue}", clear?"":"\x0C", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{purple}", clear?"":"\x03", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{orchid}", clear?"":"\x0E", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{yellow}", clear?"":"\x09", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{gold}", clear?"":"\x10", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{lightgreen}", clear?"":"\x05", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{green}", clear?"":"\x04", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{lime}", clear?"":"\x06", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{grey}", clear?"":"\x08", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{grey2}", clear?"": "\x0D", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{teamcolor}", clear?"":"\x03", false);
+	ReplaceString(cSzoveg, sizeof(cSzoveg), "{default}", clear?"":"\x01", false);
+
+	return cSzoveg;
+}
+
+/**
+ * Returns a random client from the specified team.
+ *
+ * @param team	teamindex.
+ * @return Random client index.
+ */
 stock int GetRandomPlayerFromTeam(int team)
 {
 	new jatekosok[MaxClients+1];
@@ -507,6 +1000,12 @@ stock int GetRandomPlayerFromTeam(int team)
 	return jatekosok[GetRandomInt(0, jatekosszam-1)];
 }
 
+/**
+ * Returns an alive client from the specified team.
+ *
+ * @param team	teamindex.
+ * @return Alive client index.
+ */
 stock int GetAliveClientTeam(int team)
 {
 	for (int i = 1; i <= MaxClients; i++)
@@ -520,6 +1019,12 @@ stock int GetAliveClientTeam(int team)
 	return 0;
 }
 
+/**
+ * Check whether the client is valid or no.
+ *
+ * @param client	Clientindex.
+ * @return True if valid, false otherwise.
+ */
 stock bool IsValidClient(int client)
 {
 	if(client <= 0) return false;
@@ -558,7 +1063,18 @@ stock bool IsStrContains(char[] String, char[] Text, bool caseSensitive = false)
 	return false;
 }
 
-stock GetEntityModel(int entity, char[] Buffer, int length)
+stock int GetCharCount(char[] s, char[] c)
+{
+	int count = 0;
+	for (int i = 0; i < strlen(s); ++i)
+	{
+		if(s[i] == c[0]) count++;
+	}
+
+	return count;
+}
+
+stock char GetEntityModel(int entity, char[] Buffer, int length)
 {
 	GetEntPropString(entity, Prop_Data, "m_ModelName", Buffer, length);
 }
@@ -571,7 +1087,7 @@ stock int NullMenuHandler(Handle menu, MenuAction action, int param1, int param2
 	}
 }
 
-stock GetPercent(number, count) 
+stock int GetPercent(int number, int count) 
 {
     return RoundFloat(FloatMul((float(number) / float(count)), 100.0)); 
 }
@@ -754,6 +1270,82 @@ stock void Array_Copy(const any[] array, any[] newArray, int size)
 	}
 }
 
+/**
+ * Forces the client to look at the target.
+ *
+ * @param client	Client index.
+ * @param target	Target index.
+ * @noreturn
+ */
+stock void LookAtTarget(int client, int target)
+{
+    float angles[3];
+	float clientEyes[3];
+	float targetEyes[3];
+	float resultant[3];
+
+	GetClientEyePosition(client, clientEyes);
+	GetClientEyePosition(target, targetEyes);
+	MakeVectorFromPoints(targetEyes, clientEyes, resultant);
+	GetVectorAngles(resultant, angles);
+	if(angles[0] >= 270){
+		angles[0] -= 270;
+		angles[0] = (90-angles[0]);
+	} else {
+		if(angles[0] <= 90){
+			angles[0] *= -1;
+		}
+	}
+
+	angles[1] -= 180;
+	TeleportEntity(client, NULL_VECTOR, angles, NULL_VECTOR);
+}
+
+/**
+ * Returns the itemdefinitionindex.
+ *
+ * @param classname			Weapon classname.
+ * @return itemdefinitionindex
+ */
+stock int GetWeaponDefIndexFromClass(char[] classname)
+{
+	if(StrEqual(classname, "weapon_awp")) return 9;
+	else if(StrEqual(classname, "weapon_ak47")) return 7;
+	else if(StrEqual(classname, "weapon_m4a1")) return 16;
+	else if(StrEqual(classname, "weapon_m4a1_silencer")) return 60;
+	else if(StrEqual(classname, "weapon_deagle")) return 1;
+	else if(StrEqual(classname, "weapon_usp_silencer")) return 61;
+	else if(StrEqual(classname, "weapon_hkp2000")) return 32;
+	else if(StrEqual(classname, "weapon_glock")) return 4;
+	else if(StrEqual(classname, "weapon_elite")) return 2;
+	else if(StrEqual(classname, "weapon_p250")) return 36;
+	else if(StrEqual(classname, "weapon_cz75a")) return 63;
+	else if(StrEqual(classname, "weapon_fiveseven")) return 3;
+	else if(StrEqual(classname, "weapon_tec9")) return 30;
+	else if(StrEqual(classname, "weapon_revolver")) return 64;
+	else if(StrEqual(classname, "weapon_nova")) return 35;
+	else if(StrEqual(classname, "weapon_xm1014")) return 25;
+	else if(StrEqual(classname, "weapon_mag7")) return 27;
+	else if(StrEqual(classname, "weapon_sawedoff")) return 29;
+	else if(StrEqual(classname, "weapon_m249")) return 14;
+	else if(StrEqual(classname, "weapon_negev")) return 28;
+	else if(StrEqual(classname, "weapon_mp9")) return 34;
+	else if(StrEqual(classname, "weapon_mac10")) return 17;
+	else if(StrEqual(classname, "weapon_mp7")) return 33;
+	else if(StrEqual(classname, "weapon_ump45")) return 24;
+	else if(StrEqual(classname, "weapon_p90")) return 19;
+	else if(StrEqual(classname, "weapon_bizon")) return 26;
+	else if(StrEqual(classname, "weapon_famas")) return 10;
+	else if(StrEqual(classname, "weapon_galilar")) return 13;
+	else if(StrEqual(classname, "weapon_ssg08")) return 40;
+	else if(StrEqual(classname, "weapon_aug")) return 8;
+	else if(StrEqual(classname, "weapon_sg556")) return 39;
+	else if(StrEqual(classname, "weapon_scar20")) return 38;
+	else if(StrEqual(classname, "weapon_g3sg1")) return 11;
+	else if(StrEqual(classname, "weapon_healthshot")) return 57;
+	else return -1;
+}
+
 methodmap Jatekos
 {
 	public Jatekos(int jatekos) {
@@ -906,6 +1498,12 @@ methodmap Jatekos
 		}
 	}
 
+	property bool IsBot {
+		public get() {
+			return IsFakeClient(this.index);
+		}
+	}
+
 	property float ConnectionTime {
 		public get() {
 			return GetClientTime(this.index);
@@ -921,6 +1519,16 @@ methodmap Jatekos
 			SetEntPropFloat(this.index, Prop_Data, "m_flLaggedMovementValue", value);
 		}
 	}
+
+	property int Money {
+		public get() {
+			return GetEntProp(this.index, Prop_Send, "m_iAccount");
+		}
+
+		public set(int value) {
+			SetEntProp(this.index, Prop_Send, "m_iAccount", value);
+		}
+	}
 	
 	public bool GetName(char[] name, int maxlen) {
 		return GetClientName(this.index, name, maxlen);
@@ -932,6 +1540,11 @@ methodmap Jatekos
 
 	public bool GetAuthId(AuthIdType authType, char[] auth, int maxlen, bool validate=true) {
 		return GetClientAuthId(this.index, authType, auth, maxlen, validate);
+	}
+
+	public char GetClanTag(char[] buffer, int maxlength)
+	{
+		return CS_GetClientClanTag(this.index, buffer, maxlength);
 	}
 
 	public int GrabSteamAccountID(bool validate=true) {
@@ -978,6 +1591,10 @@ methodmap Jatekos
 	   GetClientAbsAngles(this.index, ang);
 	}
 
+	public void SetClanTag(char[] tag) {
+		CS_SetClientClanTag(this.index, tag);
+	}
+
 	public void GetAbsOrigin(float vec[3]) {
 		GetClientAbsOrigin(this.index, vec);
 	}
@@ -1016,6 +1633,10 @@ methodmap Jatekos
 
 	public void ChangeTeam(int team) {
 		ChangeClientTeam(this.index, team);
+	}
+
+	public void SetModel(char[] model) {
+		SetEntityModel(this.index, model);
 	}
 
 	public void Kill() {
@@ -1060,6 +1681,77 @@ methodmap Jatekos
 			char message[256];
 			VFormat(message, sizeof(message), format, 3);
 			KickClient(this.index, message);
+		}
+	}
+}
+
+methodmap Weapon < KeyValues 
+{
+	public void GetVector(float[3] vec)
+	{
+		this.GetVector(NULL_STRING, vec);
+	}
+	
+	public void GetClassname(char[] buffer, int maxlength)
+	{
+		this.GetSectionName(buffer, maxlength);
+	}
+	
+	public bool Spawn()
+	{
+		char classname[32];
+		float vec[3];
+		int entity;
+		
+		this.GetVector(vec);
+		this.GetClassname(classname, sizeof(classname));
+		
+		entity = CreateEntityByName(classname);
+		if (entity != -1)
+		{
+			TeleportEntity(entity, vec, NULL_VECTOR, NULL_VECTOR);
+			SetEntProp(entity, Prop_Send, "m_iItemDefinitionIndex", GetWeaponDefIndexFromClass(classname));
+			DispatchSpawn(entity);
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+	
+	public Weapon(const char[] classname, const float vec[3])
+	{
+		KeyValues kv = new KeyValues(classname);
+		kv.SetVector(NULL_STRING, vec); 
+		return view_as<Weapon>(kv);
+	}
+	
+	public static void SpawnWeapons(ArrayList array)
+	{
+		Weapon weapon;
+		for (int i = 0; i < array.Length; i++)
+		{
+			weapon = array.Get(i);
+			weapon.Spawn();
+		}
+	}
+	
+	public static Weapon EntityToWeapon(int entity)
+	{
+		if (!IsValidEntity(entity))
+		{
+			return null;
+		}
+		else
+		{
+			char classname[64];
+			float vec[3];
+
+			GetEntityClassname(entity, classname, sizeof(classname));
+			GetEntPropVector(entity, Prop_Send, "m_vecOrigin", vec);
+			
+			return (new Weapon(classname, vec));
 		}
 	}
 }
