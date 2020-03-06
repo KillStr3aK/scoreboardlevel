@@ -18,10 +18,6 @@
 #include <sdktools>
 #include <cstrike>
 #include <clientprefs>
-#undef REQUIRE_PLUGIN
-#include <crypt>
-#include <progressbar>
-#define REQUIRE_PLUGIN
 
 #pragma tabsize 0;
 
