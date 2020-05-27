@@ -7,7 +7,7 @@
 #define PLUGIN_NEV	"Scoreboard Custom Levels"
 #define PLUGIN_LERIAS	"(9_9)"
 #define PLUGIN_AUTHOR	"Nexd"
-#define PLUGIN_VERSION	"1.1.1"
+#define PLUGIN_VERSION	"1.1.2"
 #define PLUGIN_URL	"https://github.com/KillStr3aK"
 #define MAX_ICONS 128
 #pragma tabsize 0
@@ -205,6 +205,11 @@ public void OnThinkPost(int m_iEntity)
 			if(m_iLevel[i] != m_iLevelTemp[i]) SetEntData(m_iEntity, m_iOffset + (i * 4), m_iLevel[i]);
 		} else SetEntData(m_iEntity, m_iOffset + (i * 4), -1);
 	}
+}
+
+public void OnClientDisconnect(int client)
+{
+	m_iLevel[client] = -1;
 }
 
 stock int GetIconFromIconIndex(int iconindex)
