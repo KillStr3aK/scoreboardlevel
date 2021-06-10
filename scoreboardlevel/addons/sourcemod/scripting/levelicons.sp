@@ -118,7 +118,7 @@ public void IconMenu(Jatekos jatekos)
 		else {
 			if(g_eLevelIcons[i][Flag] != -1)
 			{
-				if(CheckCommandAccess(jatekos.index, "", g_eLevelIcons[i][Flag])) menu.AddItem(IndexString, g_eLevelIcons[i][MenuNev]);
+				if(CheckCommandAccess(jatekos.index, "", 1 << g_eLevelIcons[i][Flag])) menu.AddItem(IndexString, g_eLevelIcons[i][MenuNev]);
 				else menu.AddItem(IndexString, g_eLevelIcons[i][MenuNev], ITEMDRAW_DISABLED);
 			} else {
 				menu.AddItem(IndexString, g_eLevelIcons[i][MenuNev]);
